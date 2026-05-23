@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Diploma Studio Full</title>
+
+<style>
+body {
+    margin: 0;
+    display: flex;
+    font-family: Arial;
+    background: #1e1e1e;
+}
+
+#panel {
+    width: 360px;
+    padding: 10px;
+    background: #2b2b2b;
+    color: white;
+}
+
+canvas {
+    margin: 10px;
+    background: white;
+    border: 2px solid #444;
+}
+
+button, input, select {
+    width: 100%;
+    margin: 6px 0;
+}
+</style>
+</head>
+
+<body>
+
+<div id="panel">
+    <h3>Diploma Studio</h3>
+
+    <label>Background</label>
+    <input type="color" id="bgColor" value="#ffffff">
+
+    <label>Frame Style</label>
+    <select id="frameStyle">
+        <option value="classic">Classic Black</option>
+        <option value="gold">Gold Luxury</option>
+        <option value="minimal">Minimal Thin</option>
+    </select>
+
+    <hr>
+
+    <button onclick="addText(false)">Add Text</button>
+    <button onclick="addText(true)">Add Headline</button>
+
+    <label>Font Style</label>
+    <select id="fontSelect">
+        <option value="serif">Formal Serif</option>
+        <option value="script">Connected Script</option>
+        <option value="hand">Handwriting</option>
+        <option value="modern">Modern Clean</option>
+    </select>
+
+    <hr>
+
+    <label>Upload Logo (auto clean + animated)</label>
+    <input type="file" id="logoUpload">
+
+    <label>Upload Image</label>
+    <input type="file" id="imgUpload">
+
+    <hr>
+
+    <button onclick="download()">Export PNG</button>
+</div>
+
+<canvas id="canvas" width="900" height="600"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let bgColor = "#fff";
+let elements = [];
+let dragging = null;
+let offsetX = 0;
+let offsetY = 0;
+
+// ================= LOGO =================
+let logo = null;
+let logoX = 80;
+let logoY = 60;
+let logoVX = 1.8;
+let logoVY = 1.2;
+
+// ================= FONT SYSTEM =================
+function getFont(type, isHeadline) {
+    if (type === "serif") return isHeadline ? "bold 36px Times New Roman" : "22px Times New Roman";
+    if (type === "script") return isHeadline ? "bold 40px cursive" : "24px cursive";
+    if (type === "hand") return isHeadline ? "bold 38px Comic Sans MS" : "22px Comic Sans MS";
+    if (type === "modern") return isHeadline ? "bold 36px Arial" : "22px Arial";
+}
+
+// ================= ADD TEXT =================
+function addText(isHeadline) {
+    const fontType = document.getElementById("fontSelect").value;
+
+    elements.push({
+        type: "text",
+        text: isHeadline ? "HEADLINE" : "Your text here",
+        x: 200,
+        y: 200,
+        fontType,
+        isHeadline
+    });
+}
+
+// ================= LOGO CLEANING (auto crop white background) =================
+function cleanLogo(img) {
+    const temp = document.createElement("canvas");
+    const tctx = temp.getContext("2d");
+
+    temp.width = img.width;
+    temp.height = img.height;
+
+    tctx.drawImage(img, 0, 0);
+
+    const data = tctx.getImageData(0, 0, temp.width, temp.height);
+    const pixels = data.data;
+
+    let minX = temp.width, minY = temp.height;
+    let maxX = 0, maxY = 0;
+
+    for (let y = 0; y < temp.height; y++) {
+        for (let x = 0; x < temp.width; x++) {
+
+            const i = (y * temp.width + x) * 4;
+            const r = pixels[i];
+            const g = pixels[i+1];
+            const b = pixels[i+2];
+            const a = pixels[i+3];
+
+            const isBG = a < 10 || (r > 240 && g > 240 && b > 240);
+
+            if (!isBG) {
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    const w = Math.max(1, maxX - minX);
+    const h = Math.max(1, maxY - minY);
+
+    const cropped = document.createElement("canvas");
+    const cctx = cropped.getContext("2d");
+
+    cropped.width = w;
+    cropped.height = h;
+
+    cctx.drawImage(temp, minX, minY, w, h, 0, 0, w, h);
+
+    const out = new Image();
+    out.src = cropped.toDataURL();
+
+    return out;
+}
+
+// ================= LOGO UPLOAD =================
+document.getElementById("logoUpload").onchange = function(e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = function(evt) {
+        const img = new Image();
+
+        img.onload = () => {
+            logo = cleanLogo(img);
+        };
+
+        img.src = evt.target.result;
+    };
+
+    reader.readAsDataURL(file);
+};
+
+// ================= IMAGE UPLOAD =================
+document.getElementById("imgUpload").onchange = function(e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = function(evt) {
+        const img = new Image();
+
+        img.onload = () => {
+            elements.push({
+                type: "image",
+                x: 450,
+                y: 250,
+                w: 200,
+                h: 200,
+                img,
+                framed: true
+            });
+        };
+
+        img.src = evt.target.result;
+    };
+
+    reader.readAsDataURL(file);
+};
+
+// ================= FRAME =================
+function drawFrame() {
+    const style = document.getElementById("frameStyle").value;
+
+    if (style === "classic") {
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 8;
+    }
+    if (style === "gold") {
+        ctx.strokeStyle = "#c9a227";
+        ctx.lineWidth = 14;
+    }
+    if (style === "minimal") {
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 3;
+    }
+
+    ctx.strokeRect(25, 25, canvas.width - 50, canvas.height - 50);
+}
+
+// ================= DRAW LOOP =================
+function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    drawFrame();
+
+    for (let el of elements) {
+
+        if (el.type === "text") {
+            ctx.font = getFont(el.fontType, el.isHeadline);
+            ctx.fillStyle = "black";
+            ctx.fillText(el.text, el.x, el.y);
+        }
+
+        if (el.type === "image") {
+            if (el.framed) {
+                ctx.strokeStyle = "#000";
+                ctx.lineWidth = 3;
+                ctx.strokeRect(el.x, el.y, el.w, el.h);
+            }
+
+            ctx.drawImage(el.img, el.x, el.y, el.w, el.h);
+        }
+    }
+
+    // ================= ANIMATED LOGO =================
+    if (logo) {
+        ctx.drawImage(logo, logoX, logoY, 120, 90);
+
+        logoX += logoVX;
+        logoY += logoVY;
+
+        if (logoX < 0 || logoX + 120 > canvas.width) logoVX *= -1;
+        if (logoY < 0 || logoY + 90 > canvas.height) logoVY *= -1;
+    }
+
+    requestAnimationFrame(draw);
+}
+draw();
+
+// ================= DRAG SYSTEM =================
+canvas.addEventListener("mousedown", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    dragging = null;
+
+    for (let el of elements) {
+
+        if (el.type === "text") {
+            if (x > el.x && x < el.x + 300 && y > el.y - 30 && y < el.y) {
+                dragging = el;
+
+                const newText = prompt("Edit text:", el.text);
+                if (newText !== null) el.text = newText;
+            }
+        }
+
+        if (el.type === "image") {
+            if (x > el.x && x < el.x + el.w && y > el.y && y < el.y + el.h) {
+                dragging = el;
+            }
+        }
+    }
+
+    if (dragging) {
+        offsetX = x - dragging.x;
+        offsetY = y - dragging.y;
+    }
+});
+
+canvas.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+
+    const rect = canvas.getBoundingClientRect();
+    dragging.x = e.clientX - rect.left - offsetX;
+    dragging.y = e.clientY - rect.top - offsetY;
+});
+
+canvas.addEventListener("mouseup", () => dragging = null);
+
+// ================= BACKGROUND =================
+document.getElementById("bgColor").oninput = e => {
+    bgColor = e.target.value;
+};
+
+// ================= EXPORT =================
+function download() {
+    const link = document.createElement("a");
+    link.download = "diploma.png";
+    link.href = canvas.toDataURL();
+    link.click();
+}
+</script>
+
+</body>
+</html>
